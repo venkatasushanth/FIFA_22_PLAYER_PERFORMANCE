@@ -1,0 +1,609 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[347]:
+
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, classification_report, roc_auc_score, roc_curve, accuracy_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+import eli5
+from eli5.sklearn import PermutationImportance
+from collections import Counter
+
+
+# In[348]:
+
+
+Fifa_22_database = pd.read_csv("C:\\Users\\welcome\\Desktop\\Msc Data Science Cov Uni\\Final project work\\fifa_2022_datasets\\players_22.csv",low_memory=False)
+
+
+# In[349]:
+
+
+pd.set_option('display.max_rows', 500)
+
+
+# In[350]:
+
+
+Fifa_22_database.head()
+
+
+# In[351]:
+
+
+print(Fifa_22_database.iloc[0:13, 0:50])
+
+
+# In[352]:
+
+
+Fifa_22_database.columns
+
+
+# In[353]:
+
+
+Fifa_22_database.info()
+
+
+# In[354]:
+
+
+Fifa_22_database.isnull().sum()
+
+
+# In[355]:
+
+
+player_features = (
+    'movement_acceleration', 'movement_agility', 'mentality_aggression', 
+    'movement_balance', 'skill_ball_control', 'mentality_composure', 
+    'attacking_crossing', 'skill_dribbling', 'skill_fk_accuracy', 
+    'attacking_finishing', 'goalkeeping_diving', 'goalkeeping_handling', 
+    'goalkeeping_kicking', 'goalkeeping_positioning', 'goalkeeping_reflexes', 
+    'attacking_heading_accuracy', 'mentality_interceptions', 'power_jumping', 
+    'skill_long_passing', 'power_long_shots', 'defending_marking_awareness', 'mentality_penalties'
+)
+
+from math import pi
+idx = 1
+plt.figure(figsize=(15,45))
+for position_name, features in Fifa_22_database.groupby(Fifa_22_database['club_position'])[player_features].mean().iterrows():
+    top_features = dict(features.nlargest(5))
+    
+    # number of variable
+    categories=top_features.keys()
+    N = len(categories)
+    
+    # We are going to plot the first line of the data frame.
+    # But we need to repeat the first value to close the circular graph:
+    values = list(top_features.values())
+    values += values[:1]
+
+    # What will be the angle of each axis in the plot? (we divide the plot / number of variable)
+    angles = [n / float(N) * 2 * pi for n in range(N)]
+    angles += angles[:1]
+
+    # Initialise the spider plot
+    ax = plt.subplot(10, 3, idx, polar=True)
+
+    # Draw one axe per variable + add labels labels yet
+    plt.xticks(angles[:-1], categories, color='grey', size=8)
+    
+ # Draw ylabels
+    ax.set_rlabel_position(0)
+    plt.yticks([25,50,75], ["25","50","75"], color="grey", size=7)
+    plt.ylim(0,100)
+    
+    plt.subplots_adjust(hspace = 0.5)
+    
+    # Plot data
+    ax.plot(angles, values, linewidth=1, linestyle='solid')
+    # Fill area
+    ax.fill(angles, values, 'b', alpha=0.1)
+    
+    plt.title(position_name, size=11, y=1.1)
+    
+    idx += 1
+
+
+# In[356]:
+
+
+# Most valued player
+most_valued_player = Fifa_22_database.loc[Fifa_22_database['value_eur'].idxmax()]
+print('Most valued player:')
+print(most_valued_player['short_name'])  # Assuming the player's name is stored in the 'short_name' column
+
+# Highest earner
+highest_earner = Fifa_22_database.loc[Fifa_22_database['wage_eur'].idxmax()]
+print('\nHighest earner:')
+print(highest_earner['short_name'])  # Assuming the player's name is stored in the 'short_name' column
+
+print("--" * 40)
+print("\nTop Earners:")
+# Sorting the DataFrame by 'wage_eur' in descending order to get the top earners
+top_earners = Fifa_22_database.sort_values(by='wage_eur', ascending=False).head(10)
+print(top_earners[['short_name', 'wage_eur']])
+
+
+# In[357]:
+
+
+#Data Cleaning and removing NaN values to null values(0's)
+
+columns_required_only = ['short_name', 'overall', 'potential', 'age', 'weak_foot', 'skill_moves', 'pace', 'shooting', 'passing', 'dribbling', 'defending', 'physic']
+Fifa_22_database = Fifa_22_database[columns_required_only].fillna(0) #fillna() is the function which replaces NaN's to 0's
+
+
+# In[358]:
+
+
+Fifa_22_database.head(50)
+
+
+# In[359]:
+
+
+Fifa_22_database.isnull().sum()
+
+
+# In[360]:
+
+
+#Graphical Representation of each entity/column
+
+def plt_df(data, col):
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+
+    sns.histplot(data=data, x=col, kde=True, ax=ax[0])
+    sns.boxplot(data=data, x=col, ax=ax[1])
+
+    ax[0].set_title(f"{col} Distribution Histogram")
+    ax[1].set_title(f"{col} Distribution Box Plot")
+
+    plt.show()
+
+
+# In[361]:
+
+
+plt_df(Fifa_22_database,'overall')
+
+
+# In[362]:
+
+
+plt_df(Fifa_22_database,'potential')
+
+
+# In[363]:
+
+
+#Create a new column and add all skill attributes to one column
+import os
+Fifa_22_database['Players Skill Set (In Total)'] = 0
+
+# Save the updated dataset
+Fifa_22_database.to_csv("Fifa22updates.csv", index=False)
+current_directory = os.getcwd()
+
+# Print the location of the saved CSV file
+print("The CSV file is saved in the following location:")
+print(current_directory + "\\Fifa22updates.csv")  # On Windows
+
+Fifa_22_database
+
+
+# In[364]:
+
+
+# Calculate the average skill set score and round it
+Fifa_22_database['Players Skill Set (In Total)'] = (Fifa_22_database["pace"] + Fifa_22_database["shooting"] + 
+                                                  Fifa_22_database["passing"] + Fifa_22_database["dribbling"] + 
+                                                  Fifa_22_database["defending"]) / 5
+
+Fifa_22_database['Players Skill Set (In Total)'] = Fifa_22_database['Players Skill Set (In Total)'].round()
+
+# Save the updated dataset to a CSV file named "Fifa22updates.csv"
+Fifa_22_database.to_csv("Fifa22updates.csv", index=False)
+
+# Apply a mapping to convert skill set scores into 0's and 1's based on the condition
+Fifa_22_database['Players Skill Set (In Total)'] = Fifa_22_database['Players Skill Set (In Total)'].map(lambda x: 1 if x >= 60.0 else 0)
+
+Fifa_22_database
+
+
+# In[365]:
+
+
+#Split Data into features and targets
+
+X = Fifa_22_database[['overall','potential','weak_foot','skill_moves']]
+Y = Fifa_22_database.iloc[:,-1]
+
+# Check the class distribution before oversampling
+print("Class distribution before oversampling:")
+print(Y.value_counts())
+
+from imblearn.over_sampling import RandomOverSampler
+# Define the oversampler
+oversampler = RandomOverSampler(sampling_strategy='minority')
+
+# Resample the data
+X_resampled, y_resampled = oversampler.fit_resample(X, Y)
+
+# Check the class distribution after oversampling
+print("\nClass distribution after oversampling:")
+print(pd.Series(y_resampled).value_counts())
+
+# Convert the resampled data back to a Pandas DataFrame
+data_resampled = pd.DataFrame(np.concatenate([X_resampled, y_resampled.values.reshape(-1,1)], axis=1))
+
+# Save the resampled data to a new file
+data_resampled.to_csv(".csv", index=False)
+
+
+# In[367]:
+
+
+#Train Test split model version
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.35, random_state=0)
+accuracy_scores = []
+
+#K neighbors classification 
+kNN = KNeighborsClassifier(n_neighbors=5)
+
+# Fit the classifier to the training data
+kNN.fit(X_train, Y_train)
+
+Y_pred_knn = kNN.predict(X_test)
+
+# Get the accuracy score
+accuracy = 100*accuracy_score(Y_test, Y_pred_knn)
+print("Accuracy: {:.2f}%".format(accuracy))
+
+# Get the classification report
+cls_rpt = classification_report(Y_test, Y_pred)
+print("\nClassification Report:\n", cls_rpt)
+
+accuracy_scores.append(accuracy_score(Y_test, Y_pred_knn))
+
+
+# In[368]:
+
+
+confusion = confusion_matrix(Y_test, Y_pred)
+
+# Convert the confusion matrix into a data frame
+confusion_df = pd.DataFrame(confusion, index=["True", "False"], columns=["Positive", "Negative"])
+
+# Plot the confusion matrix
+sns.heatmap(confusion_df, annot=True, fmt="d", cmap="YlGnBu")
+plt.xlabel("Predicted Values")
+plt.ylabel("True Values")
+plt.title("Confusion Matrix for KNN")
+plt.show()
+
+
+# In[369]:
+
+
+y_true = [0 if y == 1.0 else 1 for y in Y_test]
+
+# Get the ROC AUC score
+auc = roc_auc_score(Y_test, Y_pred)
+
+# Get the false positive rate and true positive rate for different thresholds
+fpr, tpr, thresholds = roc_curve(y_true, Y_pred)
+
+# Plot the ROC curve
+plt.plot(fpr, tpr, label="AUC = {:.2f}".format(auc))
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve for KNN")
+plt.legend()
+plt.show()
+
+
+# In[370]:
+
+
+perm = PermutationImportance(kNN, random_state=1).fit(X_test, Y_test)
+eli5.show_weights(perm, feature_names = X_test.columns.tolist())
+
+
+# In[371]:
+
+
+# Train a random forest classifier
+clf = RandomForestClassifier(n_estimators=10, random_state=45)
+clf.fit(X_train, Y_train)
+
+# Make predictions on the test set
+Y_pred_dt = clf.predict(X_test)
+
+# Calculate the accuracy score
+accuracy = accuracy_score(Y_test, Y_pred_dt)
+print("Accuracy: {:.2f}%".format(accuracy * 100))
+
+# Get the classification report
+cls_rpt = classification_report(Y_test, Y_pred)
+print("\nClassification Report:\n", cls_rpt)
+
+accuracy_scores.append(accuracy_score(Y_test, Y_pred_dt))
+
+
+# In[372]:
+
+
+confusion = confusion_matrix(Y_test, Y_pred)
+
+# Convert the confusion matrix into a data frame
+confusion_df = pd.DataFrame(confusion, index=["True", "False"], columns=["Positive", "Negative"])
+
+# Plot the confusion matrix as a bar plot
+sns.heatmap(confusion_df, annot=True, fmt="d", cmap="icefire")
+plt.xlabel("Predicted Values")
+plt.ylabel("True Values")
+plt.title("Confusion Matrix for Random Forest")
+plt.show()
+
+
+# In[373]:
+
+
+y_true = [0 if y == 1.0 else 1 for y in Y_test]
+
+# Get the ROC AUC score
+auc = roc_auc_score(Y_test, Y_pred)
+
+# Get the false positive rate and true positive rate for different thresholds
+fpr, tpr, thresholds = roc_curve(y_true, Y_pred)
+
+# Plot the ROC curve
+plt.plot(fpr, tpr, label="AUC = {:.2f}".format(auc))
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve for Random Forest")
+plt.legend()
+plt.show()
+
+
+# In[374]:
+
+
+perm = PermutationImportance(clf, random_state=1).fit(X_test, Y_test)
+eli5.show_weights(perm, feature_names = X_test.columns.tolist())
+
+
+# In[375]:
+
+
+# Train a support vector machine classifier
+SVM_train = SVC(kernel='rbf', C=1, gamma=0.1, random_state=45)
+SVM_train.fit(X_train, Y_train)
+
+# Make predictions on the test set
+Y_pred_svm = SVM_train.predict(X_test)
+
+# Calculate the accuracy score
+accuracy = accuracy_score(Y_test, Y_pred_svm)
+print("Accuracy: {:.2f}%".format(accuracy * 100))
+
+# Get the classification report
+cls_rpt = classification_report(Y_test, Y_pred)
+print("\nClassification Report:\n", cls_rpt)
+
+accuracy_scores.append(accuracy_score(Y_test, Y_pred_svm))
+
+
+# In[376]:
+
+
+confusion = confusion_matrix(Y_test, Y_pred)
+
+# Convert the confusion matrix into a data frame
+confusion_df = pd.DataFrame(confusion, index=["True", "False"], columns=["Positive", "Negative"])
+
+# Plot the confusion matrix as a bar plot
+sns.heatmap(confusion_df, annot=True, fmt="d", cmap="gist_earth")
+plt.xlabel("Predicted Values")
+plt.ylabel("True Values")
+plt.title("Confusion Matrix for SVM")
+plt.show()
+
+
+# In[377]:
+
+
+y_true = [0 if y == 1.0 else 1 for y in Y_test]
+
+# Get the ROC AUC score
+auc = roc_auc_score(Y_test, Y_pred)
+
+# Get the false positive rate and true positive rate for different thresholds
+fpr, tpr, thresholds = roc_curve(y_true, Y_pred)
+
+# Plot the ROC curve
+plt.plot(fpr, tpr, label="AUC = {:.2f}".format(auc))
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve for SVM")
+plt.legend()
+plt.show()
+
+
+# In[378]:
+
+
+perm = PermutationImportance(SVM_train, random_state=1).fit(X_test, Y_test)
+eli5.show_weights(perm, feature_names = X_test.columns.tolist())
+
+
+# In[384]:
+
+
+#Players "Weak_Foot" is making the players to low the skill rates.
+#Now by using the machine learning algorithms, we are going to improve the Weak_foot and update with new accuracy of players performance
+
+low_weak_foot_threshold = 2
+
+# Update weak_foot for players with a low weak foot value
+Fifa_22_database.loc[Fifa_22_database['weak_foot'] < low_weak_foot_threshold, 'weak_foot'] = 4
+
+
+# In[385]:
+
+
+# Step 2: Re-run the models with updated data 
+
+# Split data into features (X) and targets (Y)
+X = Fifa_22_database[['overall', 'potential', 'weak_foot', 'skill_moves']]
+Y = Fifa_22_database['Players Skill Set (In Total)']
+
+# Train-test split
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.35, random_state=0)
+
+
+# In[386]:
+
+
+accuracy_scores_updated=[]
+
+#K neighbors classification 
+kNN = KNeighborsClassifier(n_neighbors=5)
+
+# Fit the classifier to the training data
+kNN.fit(X_train, Y_train)
+
+Y_pred_knn1 = kNN.predict(X_test)
+
+# Calculate permutation importance
+perm = PermutationImportance(kNN, random_state=1).fit(X_test, Y_test)
+
+# Show feature weights
+eli5.show_weights(perm, feature_names=X_test.columns.tolist())
+
+# Step 4: Provide targeted training (This step is not implemented in code as it requires external game functionality)
+
+# Step 5: Evaluate the improvement
+# Calculate the accuracy score after the improvement
+accuracy_after_improvement = accuracy_score(Y_test, Y_pred_knn1)
+print("Accuracy after weak foot improvement: {:.2f}%".format(accuracy_after_improvement * 100))
+
+accuracy_scores_updated.append(accuracy_score(Y_test, Y_pred_knn1))
+
+
+# In[387]:
+
+
+#Random Forest classification 
+clf = RandomForestClassifier(n_estimators=10, random_state=45)
+clf.fit(X_train, Y_train)
+
+# Make predictions on the test set
+Y_pred_dt1 = clf.predict(X_test)
+
+# Calculate permutation importance
+perm = PermutationImportance(kNN, random_state=1).fit(X_test, Y_test)
+
+# Show feature weights
+eli5.show_weights(perm, feature_names=X_test.columns.tolist())
+
+# Step 4: Provide targeted training (This step is not implemented in code as it requires external game functionality)
+
+# Step 5: Evaluate the improvement
+# Calculate the accuracy score after the improvement
+accuracy_after_improvement = accuracy_score(Y_test, Y_pred_dt1)
+print("Accuracy after weak foot improvement: {:.2f}%".format(accuracy_after_improvement * 100))
+
+accuracy_scores_updated.append(accuracy_score(Y_test, Y_pred_dt1))
+
+
+# In[388]:
+
+
+#SVM classification 
+SVM_train = SVC(kernel='rbf', C=1, gamma=0.1, random_state=45)
+SVM_train.fit(X_train, Y_train)
+
+# Make predictions on the test set
+Y_pred_svm1 = SVM_train.predict(X_test)
+
+# Calculate permutation importance
+perm = PermutationImportance(kNN, random_state=1).fit(X_test, Y_test)
+
+# Show feature weights
+eli5.show_weights(perm, feature_names=X_test.columns.tolist())
+
+# Step 4: Provide targeted training (This step is not implemented in code as it requires external game functionality)
+
+# Step 5: Evaluate the improvement
+# Calculate the accuracy score after the improvement
+accuracy_after_improvement = accuracy_score(Y_test, Y_pred_svm1)
+print("Accuracy after weak foot improvement: {:.2f}%".format(accuracy_after_improvement * 100))
+
+accuracy_scores_updated.append(accuracy_score(Y_test, Y_pred_svm1))
+
+
+# In[390]:
+
+
+#From Above SVM is the Best Machine Learning Model for Finding the Player's Performance levels
+
+#SVM classification 
+SVM_train = SVC(kernel='rbf', C=1, gamma=0.1, random_state=45)
+SVM_train.fit(X_train, Y_train)
+
+# Make predictions on the test set
+Y_pred = SVM_train.predict(X_test)
+
+# Plot the scatter plot
+x_values = np.array([0, 1])
+y_values = np.array([accuracy, accuracy_after_improvement])
+
+plt.figure(figsize=(8, 6))
+plt.scatter(x_values, y_values, color='blue')
+plt.plot(x_values, y_values, color='red', linestyle='dashed')
+plt.xticks(x_values, ['Before Improvement', 'After Improvement'])
+plt.xlabel('Weak Foot Improvement')
+plt.ylabel('Accuracy')
+plt.title('Accuracy Before and After Weak Foot Improvement')
+plt.ylim(0, 1)
+plt.show()
+
+
+# In[398]:
+
+
+#Data Visualisation of Weak foot improvement of players for next update release
+
+accuracy_of_all_models = pd.DataFrame({
+    'Model': ['KNN', 'SVM', 'Decision Tree'],
+    'Before Improvement': accuracy_scores,
+    'After Improvement': accuracy_scores_updated
+})
+
+
+# Melt the DataFrame to make it suitable for visualization
+accuracy_data_melted = pd.melt(accuracy_of_all_models, id_vars=['Model'], var_name='Improvement', value_name='Accuracy')
+
+# Plot the bar chart using Seaborn
+plt.figure(figsize=(10, 6))
+sns.barplot(data=accuracy_data_melted, x='Model', y='Accuracy', hue='Improvement', palette='summer')
+plt.ylim(0, 1)
+plt.xlabel('Machine learning algorithm')
+plt.ylabel('Accuracy')
+plt.title('Accuracy Before and After Weak Foot Improvement for Different Models')
+plt.legend(title='Improvement', loc='upper left', bbox_to_anchor=(1, 1))
+plt.show()
+
